@@ -277,12 +277,10 @@ where
             sub_tree_size += 1;
 
             let actual_key = kv.key.encode();
-
             if trie_key != actual_key {
                 return (false, sub_tree_size);
             }
         }
-
         // Recursively check children.
         for i in 0..BRANCH_FACTOR {
             if let Some(ref child) = self.children[i] {

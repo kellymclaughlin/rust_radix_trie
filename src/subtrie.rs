@@ -92,8 +92,12 @@ where
     {
         let key_enc = key.encode();
         let removed = match match_keys(0, &self.prefix, &key_enc) {
-            KeyMatch::Full => self.node.take_value(key),
-            KeyMatch::FirstPrefix => self.node.remove(key),
+            KeyMatch::Full => {
+                self.node.take_value(key)
+            },
+            KeyMatch::FirstPrefix => {
+                self.node.remove(key)
+            },
             _ => {
                 return Err(());
             }

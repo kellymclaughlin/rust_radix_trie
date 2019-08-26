@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use {Trie, TrieCommon};
 
-const TEST_DATA: [(&'static str, u32); 7] = [
+const TEST_DATA: [(&'static str, u32); 9] = [
     ("abcdefgh", 19),
     ("abcdef", 18),
     ("abcd", 17),
@@ -11,6 +11,8 @@ const TEST_DATA: [(&'static str, u32); 7] = [
     ("a", 15),
     ("acbdef", 30),
     ("bcdefgh", 29),
+    ("/test/abc", 50),
+    ("/test/def", 50),
 ];
 
 fn test_trie() -> Trie<&'static str, u32> {
@@ -20,6 +22,8 @@ fn test_trie() -> Trie<&'static str, u32> {
         trie.insert(key, val);
         assert!(trie.check_integrity());
     }
+
+    assert_eq!(trie.len(), TEST_DATA.len());
 
     trie
 }
@@ -477,4 +481,22 @@ fn clone() {
     t2.insert("abc", 22);
 
     assert_eq!(t1, t2);
+}
+
+#[test]
+fn test_prefix_match() {
+    let trie = test_trie();
+    let match_result = trie.prefix_match("abcdefxyz").unwrap();
+    let (prefix_key, value, rest_key) = match_result;
+    assert_eq!(*prefix_key, String::from("abcdef"));
+    let expected_value: &u32 = &18;
+    assert_eq!(value, expected_value);
+    assert_eq!(*rest_key, String::from("xyz"));
+
+    let match_result2 = trie.prefix_match("/test/abc/bar").unwrap();
+    let (prefix_key2, value2, rest_key2) = match_result2;
+    assert_eq!(*prefix_key2, String::from("/test/abc"));
+    let expected_value2: &u32 = &50;
+    assert_eq!(value2, expected_value2);
+    assert_eq!(*rest_key2, String::from("/bar"));
 }

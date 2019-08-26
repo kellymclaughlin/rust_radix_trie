@@ -43,8 +43,14 @@ impl Key {
 }
 
 impl TrieKey for Key {
+    type DecodeItem = Key;
+
     fn encode_bytes(&self) -> Vec<u8> {
         self.0.clone()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(Key(v))
     }
 }
 

@@ -100,7 +100,6 @@ where
 
     let mut prev = trie;
     let mut depth = 0;
-
     loop {
         let bucket = nv.get(depth) as usize;
         let current = prev;

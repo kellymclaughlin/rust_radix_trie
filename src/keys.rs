@@ -1,6 +1,8 @@
 use endian_type::{BigEndian, LittleEndian};
 use std::ffi::OsString;
+use std::mem::size_of;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use NibbleVec;
 
 /// Trait for types which can be used to key a Radix Trie.
@@ -19,6 +21,8 @@ use NibbleVec;
 /// Many standard types implement this trait already. Integer types are encoded *big-endian*
 /// by default but can be encoded little-endian using the `LittleEndian<T>` wrapper type.
 pub trait TrieKey: PartialEq + Eq {
+    type DecodeItem;
+
     /// Encode a value as a vector of bytes.
     fn encode_bytes(&self) -> Vec<u8> {
         panic!("implement this method or TrieKey::encode");
@@ -28,6 +32,13 @@ pub trait TrieKey: PartialEq + Eq {
     fn encode(&self) -> NibbleVec {
         NibbleVec::from_byte_vec(self.encode_bytes())
     }
+
+    fn decode(n: NibbleVec) -> Box<Self::DecodeItem> {
+        let vec: Vec<u8> = n.into();
+        Self::decode_key(vec)
+    }
+
+    fn decode_key(_v: Vec<u8>) -> Box<Self::DecodeItem>;
 }
 
 /// Key comparison result.
@@ -83,71 +94,136 @@ where
 // }
 
 impl TrieKey for Vec<u8> {
+    type DecodeItem = Vec<u8>;
+
     fn encode_bytes(&self) -> Vec<u8> {
         self.clone()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(v)
     }
 }
 
 impl TrieKey for [u8] {
+    type DecodeItem = Vec<u8>;
+
     fn encode_bytes(&self) -> Vec<u8> {
         self.to_vec()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(v)
     }
 }
 
 impl TrieKey for String {
+    type DecodeItem = String;
+
     fn encode_bytes(&self) -> Vec<u8> {
         self.as_bytes().encode_bytes()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(String::from_utf8(v).expect("failed to decode String key"))
     }
 }
 
 impl TrieKey for str {
+    type DecodeItem = String;
+
     fn encode_bytes(&self) -> Vec<u8> {
         self.as_bytes().encode_bytes()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(String::from_utf8(v).expect("failed to decode str key"))
     }
 }
 
 impl<'a, T: ?Sized + TrieKey> TrieKey for &'a T {
+    type DecodeItem = Vec<u8>;
+
     fn encode_bytes(&self) -> Vec<u8> {
         (**self).encode_bytes()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(v)
     }
 }
 
 impl<'a, T: ?Sized + TrieKey> TrieKey for &'a mut T {
+    type DecodeItem = Vec<u8>;
+
     fn encode_bytes(&self) -> Vec<u8> {
         (**self).encode_bytes()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(v)
     }
 }
 
 impl TrieKey for i8 {
+    type DecodeItem = i8;
+
     fn encode_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = Vec::with_capacity(1);
         v.push(*self as u8);
         v
     }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(v[0] as i8)
+    }
 }
 
 impl TrieKey for u8 {
+    type DecodeItem = u8;
+
     fn encode_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = Vec::with_capacity(1);
         v.push(*self);
         v
     }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(v[0])
+    }
 }
 
 #[cfg(unix)]
 impl TrieKey for PathBuf {
+    type DecodeItem = PathBuf;
+
     fn encode_bytes(&self) -> Vec<u8> {
         use std::os::unix::ffi::OsStringExt;
         let str: OsString = self.clone().into();
         str.into_vec()
     }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(
+            String::from_utf8(v)
+                .as_ref()
+                .and_then(|utf8_str| Ok(PathBuf::from_str(utf8_str).unwrap()))
+                .expect("failed to decode PathBuf key"),
+        )
+    }
 }
 
 #[cfg(unix)]
 impl TrieKey for Path {
+    type DecodeItem = String;
+
     fn encode_bytes(&self) -> Vec<u8> {
         use std::os::unix::ffi::OsStrExt;
         self.as_os_str().as_bytes().encode_bytes()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(String::from_utf8(v).expect("failed to decode Path key"))
     }
 }
 
@@ -155,8 +231,14 @@ impl<T> TrieKey for LittleEndian<T>
 where
     T: Eq + Copy,
 {
+    type DecodeItem = LittleEndian<T>;
+
     fn encode_bytes(&self) -> Vec<u8> {
         self.as_bytes().encode_bytes()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(LittleEndian::from_bytes(&v))
     }
 }
 
@@ -164,19 +246,38 @@ impl<T> TrieKey for BigEndian<T>
 where
     T: Eq + Copy,
 {
+    type DecodeItem = BigEndian<T>;
+
     fn encode_bytes(&self) -> Vec<u8> {
         self.as_bytes().to_vec()
+    }
+
+    fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+        Box::new(BigEndian::from_bytes(&v))
     }
 }
 
 macro_rules! int_keys {
     ( $( $t:ty ),* ) => {
         $(
-        impl TrieKey for $t {
-            fn encode_bytes(&self) -> Vec<u8> {
-                let be: BigEndian<$t> = From::from(*self);
-                be.encode_bytes()
-            }
+            impl TrieKey for $t {
+                type DecodeItem = $t;
+
+                fn encode_bytes(&self) -> Vec<u8> {
+                    let be: BigEndian<$t> = From::from(*self);
+                    be.encode_bytes()
+                }
+
+                fn decode_key(v: Vec<u8>) -> Box<Self::DecodeItem> {
+                    let mut d_k: $t = 0;
+                    let type_size = size_of::<$t>();
+                    let mut shift_offset = type_size * 8;
+                    for i in 0..type_size {
+                        d_k |= (v[i] as $t) << shift_offset;
+                        shift_offset = shift_offset - 8;
+                    }
+                    Box::new(d_k)
+                }
         }
         )*
     };

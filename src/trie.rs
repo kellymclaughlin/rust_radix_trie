@@ -198,6 +198,23 @@ where
         self.insert(key, default);
     }
 
+    /// Given a query, find the longest prefix with an associated value in the
+    /// trie, returning that prefix, its value, and the remaining portion of the
+    /// key.
+    ///
+    /// The key may be any borrowed form of the trie's key type, but TrieKey on the borrowed
+    /// form *must* match those for the key type
+    pub fn prefix_match<'a, Q: ?Sized>(&'a self, key: &Q) -> Option<(Box<Q::DecodeItem>, &V, Box<Q::DecodeItem>)>
+        where K: Borrow<Q>, Q: TrieKey {
+        let mut key_fragments = key.encode();
+        self.node.get_ancestor(&key_fragments).map(|(node, node_key_len)| {
+            let rest = Q::decode(key_fragments.split(node_key_len));
+            let matched = Q::decode(key_fragments);
+            node.value().map(|v| (matched, v, rest))
+        }).unwrap_or_else(|| None)
+
+    }
+
     /// Check that the Trie invariants are satisfied - you shouldn't ever have to call this!
     /// Quite slow!
     #[doc(hidden)]
